@@ -1,0 +1,39 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Verify the format of CSV file uploaded to S3 bucket;
+  Save the CSV file content to a DynamoDB if its format valid;
+  Otherwise send an error message to a SNS topic.
+
+Parameters:
+  CsvAddressesBucketName:
+    Type: String
+    Description: "REQUIRED: Unique S3 bucket name to use for the app."
+    Default: "travis-csv-addresses-bucket"
+
+Resources:
+  S3CsvAddressesProcessorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: src/handlers/s3-csv-addresses-processor.csvAddressesHandler
+      Runtime: nodejs12.x
+      MemorySize: 128
+      Timeout: 60
+      Policies:
+        S3ReadPolicy:
+          BucketName: !Ref CsvAddressesBucketName
+      Events:
+        S3NewObjectEvent:
+          Type: S3
+          Properties:
+            Bucket: !Ref CsvAddressesBucket
+            Events: s3:ObjectCreated:*
+            Filter:
+              S3Key:
+                Rules:
+                  - Name: suffix
+                    Value: ".csv"
+  CsvAddressesBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref CsvAddressesBucketName
