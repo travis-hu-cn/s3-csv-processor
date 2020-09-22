@@ -11,11 +11,17 @@ Parameters:
     Description: "REQUIRED: Unique S3 bucket name to use for the app."
     Default: "travis-csv-addresses-bucket"
 
+  GeocodeAddressTableName:
+    Description: DynamoDB table Name
+    Type: String
+    Default: "geocode-address-table"
+
 Resources:
   S3CsvAddressesProcessorFunction:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: src/handlers/s3-csv-addresses-processor.csvAddressesHandler
+      Handler: s3-csv-addresses-processor.csvAddressesHandler
+      CodeUri: src/handlers/
       Runtime: nodejs12.x
       MemorySize: 128
       Timeout: 60
@@ -37,3 +43,19 @@ Resources:
     Type: AWS::S3::Bucket
     Properties:
       BucketName: !Ref CsvAddressesBucketName
+
+  GeocodeAddressTable: 
+    Type: AWS::DynamoDB::Table
+    Properties: 
+      AttributeDefinitions: 
+        - 
+          AttributeName: "Address"
+          AttributeType: "S"
+      KeySchema: 
+        - 
+          AttributeName: "Address"
+          KeyType: "HASH"
+      ProvisionedThroughput: 
+        ReadCapacityUnits: "5"
+        WriteCapacityUnits: "5"
+      TableName: !Ref GeocodeAddressTableName
