@@ -1,0 +1,10 @@
+version = 0.1
+[default]
+[default.deploy]
+[default.deploy.parameters]
+stack_name = "s3-csv"
+s3_bucket = "travis-code-bucket-999"
+s3_prefix = "s3-csv"
+region = "ap-southeast-1"
+capabilities = "CAPABILITY_IAM"
+parameter_overrides = "CsvAddressesBucketName=\"travis-csv-address-bucket\" GeocodeAddressTableName=\"geocode-address-table\""

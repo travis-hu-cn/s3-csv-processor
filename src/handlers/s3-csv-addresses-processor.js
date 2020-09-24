@@ -1,49 +1,99 @@
 const AWS = require('aws-sdk');
-const s3 = new AWS.S3();
-const ADDRESS_REGEXP = /^([-+]?\d{1,2}[.]\d+),\s*([-+]?\d{1,3}[.]\d+),\s*(\"[\w\s,]+\")$/;
+const S3 = new AWS.S3();
+const ADDRESS_REGEXP = /^([-+]?\d{1,2}[.]\d+),\s*([-+]?\d{1,3}[.]\d+),\s*\"([\w\s,]+)\"$/;
 const FIRST_LINE = 'latitude,longitude,address';
+const TABLE_NAME = process.env.GEO_ADDRESS_TABLE;
+
+const dynamodb = require('aws-sdk/clients/dynamodb');
+const docClient = new dynamodb.DocumentClient();
+
+/**
+ * Extract latitude, longitude and address from given string.
+ * @param {*} text current line of the csv file get from s3.
+ */
+function extractAddress(text){
+  var matches = ADDRESS_REGEXP.exec(text)
+  let addressEntry = {
+    "latitude": matches[1],
+    "longitude" : matches[2],
+    "address" : matches[3]
+  }
+  return addressEntry
+}
+
+/**
+ * Save the given entry to DyanmoDB table.
+ * @param {*} addressEntry geocode and address in JSON format
+ */
+function saveAddress(addressEntry) {
+  console.debug(`received: ${JSON.stringify(addressEntry)} to save to ${TABLE_NAME}.`);
+  
+  //final params to DynamoDB
+  const params = {
+      TableName: TABLE_NAME,
+      Item: addressEntry
+  }
+
+  return docClient.put(params)
+}
 
 
 /**
  * A Lambda function that process CSV file received from S3.
  */
 exports.csvAddressesHandler = async (event, context) => {
-  const getObjectRequests = event.Records.map(record => {
+
+  // Download the content from the S3 source bucket.
+  try {
+    var srcBucket = event.Records[0].s3.bucket.name;
+    var srcKey = event.Records[0].s3.object.key;
+
     const params = {
-      Bucket: record.s3.bucket.name,
-      Key: record.s3.object.key
+      Bucket: srcBucket,
+      Key: srcKey
     };
-    return s3.getObject(params).promise().then(data => {
-      var lineNumber = 1;
-      data.Body.toString().split(/\r?\n/).forEach(function(line) {
-        console.debug(line);
-        var isValid = true;
 
-        if (lineNumber == 1) {
-          if (line.trim().toLowerCase() !== FIRST_LINE){
-            isValid = false;
-          } else {
-            console.info("OK: " + line);
-            console.info(line.trim().toLowerCase() === FIRST_LINE);
-          }
-        } else if ( line.length > 0 
-                    && (!ADDRESS_REGEXP.test(line)) ){
-          isValid = false;
+    var data = await S3.getObject(params).promise();
+    var addresses = data.Body.toString().split(/\r?\n/);
+  } catch (err) {
+    console.error(err);
+    return;
+  } 
+
+  // process each address line by line
+  var lineNumber = 1;
+  for (let line of addresses) {
+    console.debug(`Processing line: ${line}`);
+    var isValid = true;
+
+    // check the header, which is the first line.
+    if (lineNumber == 1) {  
+      if (line.trim().toLowerCase() !== FIRST_LINE){
+        isValid = false;
+      }
+    }
+    // check geocode and address
+    else if ( line.length > 0) {
+      if (!ADDRESS_REGEXP.test(line)){
+        isValid = false;
+      } else {  // save to dynamoDB if current line is valid
+        // extract address entry from current line
+        var addressEntry = extractAddress(line);
+        // save the entry to dynamoDB table
+        try {
+          let result = await saveAddress(addressEntry).promise();
+          console.debug(`save ${JSON.stringify(addressEntry)} to ${TABLE_NAME} successfully.`);
+        } catch (err) {
+          console.error(`error occurred :${err} when saving: line ${lineNumber} of file ${srcKey}.`);
         }
+      }
+    }
 
-        if (!isValid){
-          var err = `Invalid format at line ${lineNumber} of file ${record.s3.object.key}`;
-          console.error(err);
-        }
+    if (!isValid){
+      var err = `Invalid format at line ${lineNumber} of file ${srcKey}`;
+      console.error(err);
+    }
 
-        lineNumber++;
-      });
-    }).catch(err => {
-      console.error("Error calling S3 getObject:", err);
-      return Promise.reject(err);
-    })
-  });
-  return Promise.all(getObjectRequests).then(() => {
-    console.debug('Complete!');
-  });
-};
+    lineNumber++;
+  }
+}

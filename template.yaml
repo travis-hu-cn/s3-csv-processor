@@ -5,6 +5,14 @@ Description: >
   Save the CSV file content to a DynamoDB if its format valid;
   Otherwise send an error message to a SNS topic.
 
+Globals:
+  Function:
+    Runtime: nodejs12.x
+    MemorySize: 128
+    Timeout: 60
+    Tags:
+      Application: s3-csv-address-processor
+
 Parameters:
   CsvAddressesBucketName:
     Type: String
@@ -20,14 +28,16 @@ Resources:
   S3CsvAddressesProcessorFunction:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: s3-csv-addresses-processor.csvAddressesHandler
-      CodeUri: src/handlers/
-      Runtime: nodejs12.x
-      MemorySize: 128
-      Timeout: 60
+      Handler: src/handlers/s3-csv-addresses-processor.csvAddressesHandler
       Policies:
-        S3ReadPolicy:
-          BucketName: !Ref CsvAddressesBucketName
+        - S3ReadPolicy:
+            BucketName: !Ref CsvAddressesBucketName
+        - DynamoDBCrudPolicy:
+            TableName: !Ref GeocodeAddressTableName
+      Environment:
+        Variables:
+          GEO_ADDRESS_TABLE: !Ref GeocodeAddressTableName
+          AWS_NODEJS_CONNECTION_REUSE_ENABLED: "1"
       Events:
         S3NewObjectEvent:
           Type: S3
@@ -39,23 +49,16 @@ Resources:
                 Rules:
                   - Name: suffix
                     Value: ".csv"
+
   CsvAddressesBucket:
     Type: AWS::S3::Bucket
     Properties:
       BucketName: !Ref CsvAddressesBucketName
 
   GeocodeAddressTable: 
-    Type: AWS::DynamoDB::Table
-    Properties: 
-      AttributeDefinitions: 
-        - 
-          AttributeName: "Address"
-          AttributeType: "S"
-      KeySchema: 
-        - 
-          AttributeName: "Address"
-          KeyType: "HASH"
-      ProvisionedThroughput: 
-        ReadCapacityUnits: "5"
-        WriteCapacityUnits: "5"
+    Type: AWS::Serverless::SimpleTable
+    Properties:
+      PrimaryKey:
+          Name: address
+          Type: String
       TableName: !Ref GeocodeAddressTableName
