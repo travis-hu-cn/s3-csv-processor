@@ -24,6 +24,11 @@ Parameters:
     Type: String
     Default: "geocode-address-table"
 
+  InvalidGeoAddressTopicName:
+    Description: SNS Topic Name for publishing invalid geo-address entry.
+    Type: String
+    Default: "invalid-geocode-address-topic"
+
 Resources:
   S3CsvAddressesProcessorFunction:
     Type: AWS::Serverless::Function
@@ -34,9 +39,12 @@ Resources:
             BucketName: !Ref CsvAddressesBucketName
         - DynamoDBCrudPolicy:
             TableName: !Ref GeocodeAddressTableName
+        - SNSPublishMessagePolicy:
+            TopicName: !Ref InvalidGeoAddressTopicName
       Environment:
         Variables:
           GEO_ADDRESS_TABLE: !Ref GeocodeAddressTableName
+          INVALID_GEO_ADDRESS_TOPIC: !Ref SimpleTopic
           AWS_NODEJS_CONNECTION_REUSE_ENABLED: "1"
       Events:
         S3NewObjectEvent:
@@ -62,3 +70,8 @@ Resources:
           Name: address
           Type: String
       TableName: !Ref GeocodeAddressTableName
+
+  SimpleTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Ref InvalidGeoAddressTopicName
