@@ -1,5 +1,6 @@
-const AWS = require('aws-sdk-mock');
-
+const AWS_MOCK = require('aws-sdk-mock');
+const AWS = require('aws-sdk');
+const DYNAMODB = require('aws-sdk/clients/dynamodb'); 
 const VALID_CSV_CONTENT = `latitude,longitude,address
 -43.58299805,146.89373497,"840 COCKLE CREEK RD, RECHERCHE TAS 7109"
 -43.58259635,146.89402117,"833 COCKLE CREEK RD, RECHERCHE TAS 7109"
@@ -15,6 +16,12 @@ const VALID_CSV_CONTENT = `latitude,longitude,address
 describe('Test csvAddressesHandler', function () { 
 
   it('TEST CASE 1: a valid CSV should not print error:', async () => {
+
+    AWS_MOCK.setSDKInstance(AWS);
+    AWS_MOCK.mock('DynamoDB.DocumentClient', 'put', function (params, callback){
+      callback(null, "successfully put item in database");
+    });
+
     const objectBody = VALID_CSV_CONTENT;
     const getObjectResp = {
       Body: objectBody
@@ -35,7 +42,7 @@ describe('Test csvAddressesHandler', function () {
       ]
     };
 
-    AWS.mock('S3', 'getObject', function(params, callback) {
+    AWS_MOCK.mock('S3', 'getObject', function(params, callback) {
       callback(null, getObjectResp);
     });
 
@@ -45,7 +52,8 @@ describe('Test csvAddressesHandler', function () {
     await handler.csvAddressesHandler(event, null);
 
     expect(console.error).not.toHaveBeenCalled();
-    AWS.restore('S3'); 
+    AWS_MOCK.restore('DynamoDB.DocumentClient');
+    AWS_MOCK.restore('S3'); 
   });
 });
 
