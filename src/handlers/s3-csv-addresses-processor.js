@@ -3,9 +3,25 @@ const S3 = new AWS.S3();
 const ADDRESS_REGEXP = /^([-+]?\d{1,2}[.]\d+),\s*([-+]?\d{1,3}[.]\d+),\s*\"([\w\s,]+)\"$/;
 const FIRST_LINE = 'latitude,longitude,address';
 const TABLE_NAME = process.env.GEO_ADDRESS_TABLE;
+const TOPIC_NAME = process.env.INVALID_GEO_ADDRESS_TOPIC;
 
 const dynamodb = require('aws-sdk/clients/dynamodb');
 const docClient = new dynamodb.DocumentClient();
+const sns =  new AWS.SNS({apiVersion: '2010-03-31'});
+
+/**
+ * Publish message to SNS topic.
+ * @param {*} message the text message
+ */
+function publishToTopic(message){
+  console.debug(`Publishing ${message} to ${TOPIC_NAME}`);
+  var params = {
+    Message: message,
+    TopicArn: TOPIC_NAME
+  };
+  return sns.publish(params);
+}
+
 
 /**
  * Extract latitude, longitude and address from given string.
@@ -92,6 +108,13 @@ exports.csvAddressesHandler = async (event, context) => {
     if (!isValid){
       var err = `Invalid format at line ${lineNumber} of file ${srcKey}`;
       console.error(err);
+      try {
+        // invalid format entry should publish to a SNS topic.
+        let result = await publishToTopic(err).promise();
+        console.debug(`${err} published to ${TOPIC_NAME}`);
+      } catch (error) {
+        console.error(`error occurred :${error}.`);
+      }
     }
 
     lineNumber++;
